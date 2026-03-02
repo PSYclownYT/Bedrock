@@ -6,11 +6,12 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QTextEdit, QTextBrowser, QVBoxLayout, QWidget,
     QSplitter, QFileSystemModel, QToolBar, QTabWidget, QLineEdit, QDialog, QListWidget,
-    QDockWidget, QListWidgetItem, QMessageBox, QInputDialog, QMenu, QFileDialog, QLabel
+    QDockWidget, QListWidgetItem, QMessageBox, QInputDialog, QMenu, QFileDialog, QLabel, QStatusBar
 )
 from PySide6.QtCore import Qt, QModelIndex, QPoint
 
 import builder  # your external builder script
+from plugin_system import load_user_plugins
 
 # =======================================
 # --- Command Palette Dialog
@@ -75,6 +76,10 @@ class MarkdownEditor(QMainWindow):
         super().__init__()
         self.root_dir = root_dir
         self.current_file = None
+        # Populated by load_custom_plugins(); shown once at startup.
+        self.plugin_errors = []
+        # Mapping of command-palette label -> callback from user plugins.
+        self.plugin_commands = {}
 
         # --- File Tree
         self.model = QFileSystemModel()
@@ -142,12 +147,33 @@ class MarkdownEditor(QMainWindow):
         self.setWindowTitle("Bedrock Notes (with Command Palette)")
         self.resize(1300, 850)
 
+        # Ensure plugin commands can display transient feedback messages.
+        self.setStatusBar(QStatusBar(self))
+
         self.build_tag_index()
+        self.load_custom_plugins()
         self.init_commands()
+        self.show_plugin_errors()
 
     # ==================================================
     # --- Command Palette
     # ==================================================
+    def load_custom_plugins(self):
+        """Load user plugin commands and collect non-fatal load errors."""
+        plugin_root = Path(os.environ.get("BEDROCK_PLUGIN_DIR", self.root_dir / ".bedrock" / "plugins"))
+        result = load_user_plugins(plugin_root, self)
+        self.plugin_commands = result.commands
+        self.plugin_errors = result.errors
+
+    def show_plugin_errors(self):
+        """Display plugin load errors in a single warning dialog, if any exist."""
+        if self.plugin_errors:
+            QMessageBox.warning(
+                self,
+                "Plugin load errors",
+                "Some plugins failed to load:\n- " + "\n- ".join(self.plugin_errors),
+            )
+
     def init_commands(self):
         """Define available commands."""
         self.commands = {
@@ -159,6 +185,7 @@ class MarkdownEditor(QMainWindow):
             "Open Graph View in Browser": lambda: webbrowser.open(f"file:///{self.root_dir/'html_preview'/'graph.html'}"),
             "Quit Application": self.close
         }
+        self.commands.update(self.plugin_commands)
 
     def open_command_palette(self):
         dialog = CommandPalette(self, self.commands)
