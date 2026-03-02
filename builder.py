@@ -1,9 +1,7 @@
 import re
 import json
-import random
 from pathlib import Path
 import markdown
-import re
 
 def extract_note_color(text):
     match = re.search(r"@color:\s*(#[0-9a-fA-F]{6})", text)
@@ -85,11 +83,12 @@ def build_vault(root_dir: Path):
     md_files = list(root_dir.glob("**/*.md"))
     tag_map = {}
     link_map = {}
+    note_colors = {}
 
     for md_file in md_files:
         text = md_file.read_text(encoding="utf-8")
-        color = extract_note_color(text)
         name = md_file.stem
+        note_colors[name] = extract_note_color(text)
         tags = TAG_REGEX.findall(text)
         links = LINK_REGEX.findall(text)
         link_map[name] = links
@@ -160,7 +159,7 @@ def build_vault(root_dir: Path):
     for f in md_files:
         nodes.append({
             "id": f.stem,
-            "color": color
+            "color": note_colors.get(f.stem, "#4fc3f7")
         })
     
     # Filter edges to only include targets that exist in our nodes
